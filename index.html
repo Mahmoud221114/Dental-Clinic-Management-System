@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>نظام عيادات الأسنان المتكامل - Dental Manager Pro</title>
+    <!-- Google Fonts (Arabic) -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            font-family: 'Cairo', sans-serif;
+        }
+        body {
+            background: #f0f4f8;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #90cdf4;
+            border-radius: 10px;
+        }
+        .card-glow {
+            transition: all 0.2s ease;
+        }
+        .card-glow:active {
+            transform: scale(0.98);
+        }
+        .toast-notify {
+            position: fixed;
+            bottom: 80px;
+            left: 16px;
+            right: 16px;
+            background: #1e293b;
+            color: white;
+            text-align: center;
+            padding: 12px;
+            border-radius: 32px;
+            z-index: 1000;
+            font-weight: 500;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+            animation: fadeUp 0.3s ease;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .bottom-nav-active {
+            background: #e3f2fd;
+            color: #1e88e5;
+            border-radius: 30px;
+        }
+        button:active {
+            transform: scale(0.96);
+        }
+        .progress-timer {
+            transition: width 1s linear;
+        }
+        .settings-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .settings-panel.open {
+            max-height: 500px;
+        }
+    </style>
+</head>
+<body class="font-cairo bg-gray-50">
+
+<div id="app" class="max-w-md mx-auto bg-gray-50 shadow-xl min-h-screen relative pb-20">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-blue-700 to-cyan-600 p-4 shadow-lg rounded-b-3xl sticky top-0 z-20">
+        <div class="flex justify-between items-center">
+            <div class="text-white font-bold text-xl"><i class="fas fa-tooth ml-2"></i> عيادات سما</div>
+            <div class="bg-white/20 rounded-full px-3 py-1 text-xs text-white" id="roleBadge">الاستقبال</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-3" id="mainView"></div>
+
+    <!-- Bottom Navigation -->
+    <div class="fixed bottom-0 right-0 left-0 max-w-md mx-auto bg-white border-t border-gray-200 rounded-t-3xl shadow-2xl z-30">
+        <div class="flex justify-around py-2 px-1" id="bottomNav">
+            <button data-view="reception" class="nav-btn flex flex-col items-center p-2 rounded-2xl transition-all"><i class="fas fa-users text-xl"></i><span class="text-xs mt-1">الاستقبال</span></button>
+            <button data-view="doctor" class="nav-btn flex flex-col items-center p-2 rounded-2xl transition-all"><i class="fas fa-stethoscope text-xl"></i><span class="text-xs mt-1">الدكتور</span></button>
+            <button data-view="accounts" class="nav-btn flex flex-col items-center p-2 rounded-2xl transition-all"><i class="fas fa-money-bill-wave text-xl"></i><span class="text-xs mt-1">الحسابات</span></button>
+            <button data-view="reports" class="nav-btn flex flex-col items-center p-2 rounded-2xl transition-all"><i class="fas fa-chart-line text-xl"></i><span class="text-xs mt-1">التقارير</span></button>
+            <button data-view="dashboard" class="nav-btn flex flex-col items-center p-2 rounded-2xl transition-all"><i class="fas fa-sliders-h text-xl"></i><span class="text-xs mt-1">الإعدادات</span></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ======================== DATA LAYER (LocalStorage + Reactive) ========================
+    class ClinicDB {
+        constructor() {
+            this.data = {
+                patients: [],
+                invoices: [],
+                settings: {
+                    examinationPrice: 200,   // سعر الكشف
+                    extractionPrice: 500,    // سعر الخلع
+                    reExaminationPrice: 150  // سعر إعادة الكشف
+                }
+            };
+            this.listeners = { patients: [], invoices: [], settings: [] };
+            this.initSample();
+        }
+
+        initSample() {
+            const stored = localStorage.getItem('clinicDB_pro');
+            if (stored) {
+                this.data = JSON.parse(stored);
+                return;
+            }
+            // Sample patients with statuses
+            this.data.patients = [
+                { id: 'p1', name: 'أحمد محمود', phone: '0501234567', caseType: 'كشف', queueNumber: 1, status: 'waiting', anesthesiaEnd: null, createdAt: Date.now() },
+                { id: 'p2', name: 'سعاد إبراهيم', phone: '0502345678', caseType: 'خلع', queueNumber: 2, status: 'waiting', anesthesiaEnd: null, createdAt: Date.now() },
+                { id: 'p3', name: 'محمد علي', phone: '0503456789', caseType: 'إعادة', queueNumber: 3, status: 'inProgress', anesthesiaEnd: null, createdAt: Date.now() }
+            ];
+            this.data.invoices = [
+                { id: 'inv1', patientId: 'p1', patientName: 'أحمد محمود', service: 'كشف', amount: 200, paid: 200, remaining: 0, method: 'نقدي', date: Date.now() },
+                { id: 'inv2', patientId: 'p3', patientName: 'محمد علي', service: 'خلع', amount: 500, paid: 300, remaining: 200, method: 'آجل', date: Date.now() }
+            ];
+            this.save();
+        }
+
+        save() {
+            localStorage.setItem('clinicDB_pro', JSON.stringify(this.data));
+            this.notifyAll();
+        }
+
+        subscribe(collection, callback) {
+            if (!this.listeners[collection]) this.listeners[collection] = [];
+            this.listeners[collection].push(callback);
+            callback(this.data[collection]);
+            return () => {
+                this.listeners[collection] = this.listeners[collection].filter(cb => cb !== callback);
+            };
+        }
+
+        notifyAll() {
+            Object.keys(this.listeners).forEach(col => {
+                if (this.listeners[col]) {
+                    this.listeners[col].forEach(cb => cb(this.data[col]));
+                }
+            });
+        }
+
+        addPatient(patient) {
+            this.data.patients.push(patient);
+            this.save();
+        }
+
+        updatePatient(id, updates) {
+            const index = this.data.patients.findIndex(p => p.id === id);
+            if (index !== -1) {
+                this.data.patients[index] = { ...this.data.patients[index], ...updates };
+                this.save();
+            }
+        }
+
+        addInvoice(invoice) {
+            this.data.invoices.push(invoice);
+            this.save();
+        }
+
+        updateSettings(newSettings) {
+            this.data.settings = { ...this.data.settings, ...newSettings };
+            this.save();
+            showToast('تم تحديث الأسعار بنجاح', 'success');
+        }
+
+        getPriceByCaseType(caseType) {
+            const settings = this.data.settings;
+            if (caseType === 'كشف') return settings.examinationPrice;
+            if (caseType === 'خلع') return settings.extractionPrice;
+            if (caseType === 'إعادة') return settings.reExaminationPrice;
+            return 0;
+        }
+    }
+
+    const db = new ClinicDB();
+    
+    // ======================== GLOBALS ========================
+    let currentView = 'reception';
+    let toastTimeout = null;
+
+    function showToast(message, type = 'info') {
+        const existing = document.querySelector('.toast-notify');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.className = 'toast-notify';
+        toast.innerText = message;
+        if (type === 'error') toast.style.background = '#dc2626';
+        if (type === 'success') toast.style.background = '#10b981';
+        document.body.appendChild(toast);
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => toast.remove(), 2500);
+    }
+
+    function playSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.value = 880;
+            gainNode.gain.value = 0.15;
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+            oscillator.stop(audioCtx.currentTime + 0.5);
+            audioCtx.resume();
+        } catch (e) {}
+    }
+
+    function getNextQueueNumber() {
+        const patients = db.data.patients;
+        const max = Math.max(0, ...patients.map(p => p.queueNumber || 0));
+        return max + 1;
+    }
+
+    function addPatientHandler(name, phone, caseType) {
+        if (!name.trim()) { showToast('الاسم مطلوب', 'error'); return false; }
+        const newPatient = {
+            id: Date.now().toString(),
+            name: name.trim(),
+            phone: phone.trim(),
+            caseType: caseType,
+            queueNumber: getNextQueueNumber(),
+            status: 'waiting',
+            anesthesiaEnd: null,
+            createdAt: Date.now()
+        };
+        db.addPatient(newPatient);
+        showToast(`تم إضافة ${name} - دور رقم ${newPatient.queueNumber}`, 'success');
+        playSound();
+        return true;
+    }
+
+    function updateStatus(patientId, newStatus, anesthesiaMinutes = 30) {
+        const patient = db.data.patients.find(p => p.id === patientId);
+        if (!patient) return;
+        if (newStatus === 'anesthesia') {
+            const endTime = Date.now() + anesthesiaMinutes * 60 * 1000;
+            db.updatePatient(patientId, { status: 'anesthesia', anesthesiaEnd: endTime });
+            showToast(`تم إعطاء البنج للمريض ${patient.name} - متبقي ${anesthesiaMinutes} دقيقة`, 'success');
+            playSound();
+        } else {
+            db.updatePatient(patientId, { status: newStatus, anesthesiaEnd: null });
+            if (newStatus === 'ready') showToast(`المريض ${patient.name} جاهز الآن!`, 'success');
+            else if (newStatus === 'completed') showToast(`تم إنهاء حالة ${patient.name}`, 'success');
+            if (newStatus === 'ready') playSound();
+        }
+        renderCurrentView();
+    }
+
+    // Check anesthesia timers
+    setInterval(() => {
+        const patients = db.data.patients;
+        let updated = false;
+        patients.forEach(p => {
+            if (p.status === 'anesthesia' && p.anesthesiaEnd && p.anesthesiaEnd <= Date.now()) {
+                db.updatePatient(p.id, { status: 'ready', anesthesiaEnd: null });
+                updated = true;
+                showToast(`⏰ انتهى وقت البنج للمريض ${p.name} - جاهز`, 'success');
+                playSound();
+            }
+        });
+        if (updated) renderCurrentView();
+    }, 1000);
+
+    // Create Invoice with auto-fill
+    function createInvoice(patientId, service, amount, paid, method, patientName) {
+        const remaining = amount - paid;
+        const inv = {
+            id: 'inv_' + Date.now(),
+            patientId,
+            patientName: patientName,
+            service,
+            amount,
+            paid,
+            remaining: remaining < 0 ? 0 : remaining,
+            method,
+            date: Date.now()
+        };
+        db.addInvoice(inv);
+        showToast(`فاتورة جديدة: ${service} - المدفوع ${paid} جنيه`, 'success');
+        renderCurrentView();
+    }
+
+    // ======================== RENDER VIEWS ========================
+    function renderReception() {
+        const patients = [...db.data.patients].sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+        let html = `
+            <div class="mb-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold text-slate-700"><i class="fas fa-user-plus ml-2 text-blue-500"></i>إدارة المرضى</h2>
+                <button id="fabAddPatient" class="bg-blue-600 text-white p-3 rounded-full shadow-lg"><i class="fas fa-plus"></i></button>
+            </div>
+            <div class="space-y-3">
+        `;
+        patients.forEach(p => {
+            let statusColor = {
+                waiting: 'bg-gray-200 text-gray-800',
+                inProgress: 'bg-blue-200 text-blue-800',
+                anesthesia: 'bg-orange-200 text-orange-800',
+                ready: 'bg-green-200 text-green-800',
+                completed: 'bg-slate-400 text-white'
+            }[p.status] || 'bg-gray-200';
+            let statusText = { waiting: 'انتظار', inProgress: 'جاري الكشف', anesthesia: 'بنج', ready: 'جاهز', completed: 'منتهي' }[p.status];
+            let timerHtml = '';
+            if (p.status === 'anesthesia' && p.anesthesiaEnd) {
+                const remainingMs = p.anesthesiaEnd - Date.now();
+                const minsRemaining = Math.max(0, Math.floor(remainingMs / 60000));
+                const progress = Math.max(0, Math.min(100, (remainingMs / (30 * 60 * 1000)) * 100));
+                timerHtml = `<div class="mt-2 bg-gray-200 rounded-full h-1.5"><div class="bg-orange-500 h-1.5 rounded-full" style="width: ${progress}%"></div></div><div class="text-xs mt-1">⏱️ متبقي ${minsRemaining} دقيقة</div>`;
+            }
+            html += `
+                <div class="bg-white rounded-2xl shadow-md p-4 border-r-4 border-blue-400 card-glow">
+                    <div class="flex justify-between items-start">
+                        <div><span class="font-bold text-lg">${p.name}</span><div class="text-xs text-gray-500">📞 ${p.phone || '-'}</div></div>
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusColor}">${statusText}</span>
+                    </div>
+                    <div class="flex justify-between mt-2 text-sm"><span>📋 ${p.caseType}</span><span>🔢 دور: ${p.queueNumber}</span></div>
+                    ${timerHtml}
+                    <div class="flex gap-2 mt-3">
+                        ${p.status !== 'completed' ? `<button data-id="${p.id}" data-action="toDoctor" class="bg-blue-500 text-white px-3 py-1 rounded-full text-xs flex-1"><i class="fas fa-play"></i> بدء الكشف</button>` : ''}
+                        ${p.status === 'ready' ? `<button data-id="${p.id}" data-action="complete" class="bg-green-600 text-white px-3 py-1 rounded-full text-xs flex-1"><i class="fas fa-check"></i> إنهاء</button>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div><div id="addModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div class="bg-white rounded-2xl w-full p-5"><h3 class="font-bold mb-3">إضافة مريض جديد</h3><input id="patientName" placeholder="الاسم الكامل" class="w-full border rounded-xl p-2 mb-2"><input id="patientPhone" placeholder="الهاتف" class="w-full border rounded-xl p-2 mb-2"><select id="caseTypeSelect" class="w-full border rounded-xl p-2 mb-4"><option>كشف</option><option>خلع</option><option>إعادة</option></select><div class="flex gap-2"><button id="confirmAdd" class="bg-blue-600 text-white p-2 rounded-xl flex-1">إضافة</button><button id="closeModal" class="bg-gray-300 p-2 rounded-xl flex-1">إلغاء</button></div></div></div>`;
+        document.getElementById('mainView').innerHTML = html;
+        document.getElementById('fabAddPatient')?.addEventListener('click', () => document.getElementById('addModal')?.classList.remove('hidden'));
+        document.getElementById('closeModal')?.addEventListener('click', () => document.getElementById('addModal')?.classList.add('hidden'));
+        document.getElementById('confirmAdd')?.addEventListener('click', () => {
+            const name = document.getElementById('patientName').value;
+            const phone = document.getElementById('patientPhone').value;
+            const caseType = document.getElementById('caseTypeSelect').value;
+            if (addPatientHandler(name, phone, caseType)) {
+                document.getElementById('addModal')?.classList.add('hidden');
+                document.getElementById('patientName').value = '';
+                document.getElementById('patientPhone').value = '';
+            }
+        });
+        document.querySelectorAll('[data-action="toDoctor"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { const id = btn.getAttribute('data-id'); updateStatus(id, 'inProgress'); currentView = 'doctor'; renderCurrentView(); updateBottomActive(); });
+        });
+        document.querySelectorAll('[data-action="complete"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { const id = btn.getAttribute('data-id'); updateStatus(id, 'completed'); });
+        });
+    }
+
+    function renderDoctor() {
+        const patients = db.data.patients;
+        const currentPatient = patients.find(p => p.status === 'inProgress');
+        const queueList = patients.filter(p => p.status !== 'inProgress' && p.status !== 'completed').sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+        let timerDisplay = '';
+        if (currentPatient && currentPatient.status === 'anesthesia' && currentPatient.anesthesiaEnd) {
+            const remainMs = currentPatient.anesthesiaEnd - Date.now();
+            const mins = Math.max(0, Math.floor(remainMs / 60000));
+            const secs = Math.floor((remainMs % 60000) / 1000);
+            const progress = (remainMs / (30 * 60 * 1000)) * 100;
+            timerDisplay = `<div class="bg-orange-100 p-3 rounded-2xl mt-2"><div class="font-bold">⏳ وقت البنج: ${mins}:${secs < 10 ? '0' + secs : secs}</div><div class="bg-orange-300 rounded-full h-2 mt-1"><div class="bg-red-500 h-2 rounded-full" style="width: ${Math.max(0, Math.min(100, progress))}%"></div></div></div>`;
+        }
+        let html = `
+            <div class="bg-white rounded-2xl shadow-xl p-5 mb-4">
+                <h3 class="text-gray-500">المريض الحالي</h3>
+                ${currentPatient ? `<div class="text-2xl font-bold">${currentPatient.name}</div><div class="text-sm">نوع الحالة: ${currentPatient.caseType} | دور: ${currentPatient.queueNumber}</div>${timerDisplay}<div class="flex gap-3 mt-4"><button id="giveAnesthesiaBtn" class="bg-orange-500 text-white py-3 rounded-xl flex-1 text-lg"><i class="fas fa-syringe"></i> إعطاء بنج</button><button id="finishTreatmentBtn" class="bg-green-600 text-white py-3 rounded-xl flex-1 text-lg"><i class="fas fa-check-circle"></i> إنهاء</button></div>` : `<div class="text-center py-6 text-gray-400">لا يوجد مريض حالياً</div>`}
+            </div>
+            <h3 class="font-bold mt-2">قائمة الانتظار</h3>
+            <div class="space-y-2">
+                ${queueList.map(p => `<div class="bg-white p-3 rounded-xl shadow flex justify-between items-center"><div><span class="font-bold">${p.name}</span><span class="mr-2 text-xs bg-gray-100 px-2 rounded">${p.status === 'waiting' ? 'انتظار' : (p.status === 'ready' ? 'جاهز' : 'بنج')}</span></div><button data-start="${p.id}" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm">بدء</button></div>`).join('')}
+            </div>
+        `;
+        document.getElementById('mainView').innerHTML = html;
+        if (currentPatient) {
+            document.getElementById('giveAnesthesiaBtn')?.addEventListener('click', () => updateStatus(currentPatient.id, 'anesthesia', 30));
+            document.getElementById('finishTreatmentBtn')?.addEventListener('click', () => updateStatus(currentPatient.id, 'completed'));
+        }
+        document.querySelectorAll('[data-start]').forEach(btn => {
+            btn.addEventListener('click', () => { const pid = btn.getAttribute('data-start'); updateStatus(pid, 'inProgress'); renderCurrentView(); });
+        });
+    }
+
+    function renderAccounts() {
+        const patients = db.data.patients;
+        const invoices = db.data.invoices;
+        let html = `
+            <div class="bg-white rounded-2xl p-4 shadow mb-4">
+                <h3 class="font-bold mb-2"><i class="fas fa-receipt"></i> إنشاء فاتورة</h3>
+                <select id="invoicePatient" class="w-full border rounded-xl p-2 mb-2">
+                    <option value="">-- اختر المريض --</option>
+                    ${patients.map(p => `<option value="${p.id}" data-case="${p.caseType}" data-name="${p.name}">${p.name} (${p.caseType})</option>`).join('')}
+                </select>
+                <div class="bg-blue-50 p-3 rounded-xl mb-2 text-right">
+                    <span class="text-sm text-gray-600">نوع الحالة: </span><span id="autoCaseDisplay" class="font-bold">---</span><br>
+                    <span class="text-sm text-gray-600">السعر التلقائي: </span><span id="autoPriceDisplay" class="font-bold text-green-700">0</span><span> جنيه</span>
+                </div>
+                <input id="serviceNameCustom" placeholder="نوع الخدمة (اختياري)" class="w-full border p-2 rounded-xl mb-2">
+                <input id="amountTotal" type="number" placeholder="المبلغ الإجمالي" class="w-full border p-2 rounded-xl mb-2" step="1">
+                <input id="paidAmount" type="number" placeholder="المدفوع" class="w-full border p-2 rounded-xl mb-2" step="1">
+                <select id="paymentMethod" class="w-full border p-2 rounded-xl mb-2"><option>نقدي</option><option>تحويل</option><option>آجل</option></select>
+                <button id="createInvoiceBtn" class="bg-indigo-600 text-white p-2 rounded-xl w-full">إضافة فاتورة</button>
+            </div>
+            <div class="space-y-2"><h3 class="font-bold">الفواتير السابقة</h3>${invoices.slice().reverse().map(inv => `<div class="bg-white p-3 rounded-xl shadow"><div><b>${inv.patientName || '-'}</b> - ${inv.service}</div><div>المبلغ: ${inv.amount} | دفع: ${inv.paid} | متبقي: ${inv.remaining}</div><div class="text-xs">طريقة الدفع: ${inv.method}</div><div class="flex gap-2 mt-2"><button class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs print-inv" data-id="${inv.id}"><i class="fas fa-print"></i> طباعة</button><button class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs share-inv" data-id="${inv.id}"><i class="fab fa-whatsapp"></i> مشاركة</button></div></div>`).join('')}</div>
+        `;
+        document.getElementById('mainView').innerHTML = html;
+        
+        const patientSelect = document.getElementById('invoicePatient');
+        const autoCaseSpan = document.getElementById('autoCaseDisplay');
+        const autoPriceSpan = document.getElementById('autoPriceDisplay');
+        const amountInput = document.getElementById('amountTotal');
+        
+        patientSelect?.addEventListener('change', (e) => {
+            const selectedOption = patientSelect.options[patientSelect.selectedIndex];
+            const caseType = selectedOption.getAttribute('data-case');
+            const patientName = selectedOption.getAttribute('data-name');
+            if (caseType) {
+                const price = db.getPriceByCaseType(caseType);
+                autoCaseSpan.innerText = caseType;
+                autoPriceSpan.innerText = price;
+                amountInput.value = price;
+                // Store patient name for invoice
+                amountInput.setAttribute('data-patient-name', patientName);
+                amountInput.setAttribute('data-case-type', caseType);
+            } else {
+                autoCaseSpan.innerText = '---';
+                autoPriceSpan.innerText = '0';
+            }
+        });
+        
+        document.getElementById('createInvoiceBtn')?.addEventListener('click', () => {
+            const selectedIndex = patientSelect.selectedIndex;
+            if (selectedIndex <= 0) { showToast('اختر مريضاً أولاً', 'error'); return; }
+            const patientId = patientSelect.value;
+            const patientName = patientSelect.options[selectedIndex].getAttribute('data-name');
+            const caseType = patientSelect.options[selectedIndex].getAttribute('data-case');
+            let service = document.getElementById('serviceNameCustom').value.trim();
+            if (!service) service = caseType || 'خدمة';
+            let amount = parseFloat(document.getElementById('amountTotal').value);
+            const paid = parseFloat(document.getElementById('paidAmount').value);
+            const method = document.getElementById('paymentMethod').value;
+            if (isNaN(amount) || amount <= 0) { showToast('المبلغ الإجمالي غير صحيح', 'error'); return; }
+            if (isNaN(paid)) { showToast('المدفوع غير صحيح', 'error'); return; }
+            createInvoice(patientId, service, amount, paid, method, patientName);
+        });
+        
+        document.querySelectorAll('.print-inv').forEach(btn => btn.onclick = () => showToast('تمت محاكاة الطباعة', 'success'));
+        document.querySelectorAll('.share-inv').forEach(btn => btn.onclick = () => showToast('تمت محاكاة المشاركة عبر واتساب', 'success'));
+    }
+
+    function renderReports() {
+        const invoices = db.data.invoices;
+        const totalRevenue = invoices.reduce((s, i) => s + i.paid, 0);
+        const caseCount = { كشف: 0, خلع: 0, إعادة: 0 };
+        db.data.patients.forEach(p => { if (caseCount[p.caseType] !== undefined) caseCount[p.caseType]++; });
+        setTimeout(() => {
+            const ctx = document.getElementById('revenueChart')?.getContext('2d');
+            if (ctx) new Chart(ctx, { type: 'line', data: { labels: ['اليوم', 'الأسبوع', 'الشهر'], datasets: [{ label: 'الإيرادات', data: [totalRevenue * 0.2, totalRevenue * 0.6, totalRevenue], borderColor: '#2563eb', tension: 0.3 }] } });
+            const pieCtx = document.getElementById('pieChart')?.getContext('2d');
+            if (pieCtx) new Chart(pieCtx, { type: 'pie', data: { labels: ['كشف', 'خلع', 'إعادة'], datasets: [{ data: [caseCount.كشف, caseCount.خلع, caseCount.إعادة], backgroundColor: ['#3b82f6', '#f97316', '#10b981'] }] } });
+        }, 100);
+        let html = `<div class="bg-white p-4 rounded-2xl shadow"><h3 class="font-bold text-lg">إجمالي الإيرادات: ${totalRevenue} جنيه</h3><canvas id="revenueChart" height="150" class="mt-2"></canvas><canvas id="pieChart" height="150" class="mt-4"></canvas></div>`;
+        document.getElementById('mainView').innerHTML = html;
+    }
+
+    function renderDashboard() {
+        const settings = db.data.settings;
+        let html = `
+            <div class="bg-white rounded-2xl p-4 shadow mb-4">
+                <h3 class="font-bold text-lg mb-3"><i class="fas fa-cog ml-2"></i> لوحة التحكم - الأسعار</h3>
+                <div class="space-y-3">
+                    <div><label class="block text-sm font-bold">💰 سعر الكشف</label><input type="number" id="examPrice" value="${settings.examinationPrice}" class="w-full border rounded-xl p-2"></div>
+                    <div><label class="block text-sm font-bold">🦷 سعر الخلع</label><input type="number" id="extractPrice" value="${settings.extractionPrice}" class="w-full border rounded-xl p-2"></div>
+                    <div><label class="block text-sm font-bold">🔄 سعر إعادة الكشف</label><input type="number" id="reExamPrice" value="${settings.reExaminationPrice}" class="w-full border rounded-xl p-2"></div>
+                    <button id="saveSettingsBtn" class="bg-green-600 text-white w-full py-3 rounded-xl mt-2 text-lg"><i class="fas fa-save"></i> حفظ الأسعار</button>
+                </div>
+            </div>
+            <div class="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-2xl p-4 text-center shadow">
+                <i class="fas fa-chart-simple text-4xl text-blue-600"></i>
+                <p class="mt-2 text-gray-600">يمكنك تعديل أسعار الخدمات الرئيسية (كشف، خلع، إعادة) وسيتم تحديثها تلقائياً في الفواتير الجديدة.</p>
+            </div>
+        `;
+        document.getElementById('mainView').innerHTML = html;
+        document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
+            const newExam = parseInt(document.getElementById('examPrice').value) || 0;
+            const newExtract = parseInt(document.getElementById('extractPrice').value) || 0;
+            const newReExam = parseInt(document.getElementById('reExamPrice').value) || 0;
+            db.updateSettings({ examinationPrice: newExam, extractionPrice: newExtract, reExaminationPrice: newReExam });
+            renderDashboard();
+        });
+    }
+
+    function renderCurrentView() {
+        if (currentView === 'reception') renderReception();
+        else if (currentView === 'doctor') renderDoctor();
+        else if (currentView === 'accounts') renderAccounts();
+        else if (currentView === 'reports') renderReports();
+        else if (currentView === 'dashboard') renderDashboard();
+    }
+
+    function updateBottomActive() {
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('bg-blue-50', 'text-blue-600');
+            btn.classList.add('text-gray-500');
+        });
+        const active = document.querySelector(`.nav-btn[data-view="${currentView}"]`);
+        if (active) {
+            active.classList.add('bg-blue-50', 'text-blue-600');
+            active.classList.remove('text-gray-500');
+        }
+    }
+
+    document.getElementById('bottomNav')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.nav-btn');
+        if (btn) {
+            currentView = btn.getAttribute('data-view');
+            renderCurrentView();
+            updateBottomActive();
+        }
+    });
+
+    // Subscribe to realtime updates
+    db.subscribe('patients', () => renderCurrentView());
+    db.subscribe('invoices', () => { if (currentView === 'accounts' || currentView === 'reports') renderCurrentView(); });
+    db.subscribe('settings', () => { if (currentView === 'dashboard') renderDashboard(); });
+    
+    renderCurrentView();
+    updateBottomActive();
+</script>
+</body>
+</html>
